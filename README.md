@@ -18,6 +18,13 @@ class Test {
   }
   void end(const std::string& str) { std::cout << "end" << str << std::endl; }
 };
+Test test;
+promise::Promise(std::bind(&Test::first, &test))
+    .then(std::bind(&Test::second, &test, std::placeholders::_1))
+    .then(std::bind(&Test::third, &test, std::placeholders::_1, 3))
+    .then(std::bind(&Test::end, &test, std::placeholders::_1))
+    .then([] { std::cout << "done" << std::endl; })
+    .execute();
 ```
 
 - Lambda
