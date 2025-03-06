@@ -1,3 +1,9 @@
+/**
+ * @file      : promise.h
+ * @author    : LittleKu<kklvzl@gmail.com>
+ * @date      : 2025-03-06 23:57:18
+ * @brief     :
+ */
 #ifndef PROMISE_H__
 #define PROMISE_H__
 
@@ -9,14 +15,11 @@
 namespace promise {
 
 template <typename T>
-struct is_tuple : std::false_type {};
-
-template <typename... Ts>
-struct is_tuple<std::tuple<Ts...>> : std::true_type {};
+concept IsTuple = requires { typename std::tuple_size<T>::type; };
 
 template <typename F, typename Result, typename... Args>
 auto invoke_next_with_args(F&& f, Result&& result, Args&&... args) {
-  if constexpr (is_tuple<std::decay_t<Result>>::value) {
+  if constexpr (IsTuple<std::decay_t<Result>>) {
     return std::apply(
         [&](auto&&... rs) {
           return std::invoke(std::forward<F>(f),
@@ -113,6 +116,6 @@ template <typename F, typename... Args>
 Promise(F&&, Args&&...) -> Promise<
     std::invoke_result_t<F, std::decay_t<Args>...>(std::decay_t<Args>...)>;
 
-} // namespace promise
+}  // namespace promise
 
-#endif // PROMISE_H__
+#endif  // PROMISE_H__
