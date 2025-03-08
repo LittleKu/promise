@@ -8,6 +8,7 @@
 #define PROMISE_H__
 
 #include <functional>
+#include <memory>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -41,25 +42,32 @@ class Promise<Ret(Args...)> {
  public:
   using FunctionType = std::function<Ret(Args...)>;
 
+ private:
+  struct State {
+    FunctionType Func;
+    std::tuple<Args...> Args;
+  };
+
+ public:
   explicit Promise(FunctionType func, Args... args)
-      : func_(std::move(func)),
-        args_(std::make_tuple(std::forward<Args>(args)...)) {
+      : state_(std::make_shared<State>(State{
+            std::move(func), std::make_tuple(std::forward<Args>(args)...)})) {
     static_assert(std::is_invocable_v<FunctionType, Args...>,
                   "Function arguments don't match parameter types");
   }
 
   template <typename F, typename... NextArgs>
   auto then(F&& next, NextArgs&&... next_args) {
-    using NextRet = decltype(std::apply(func_, args_));
+    using NextRet = decltype(std::apply(state_->Func, state_->Args));
     using NewRet = decltype(invoke_next_with_args(std::forward<F>(next),
                                                   std::declval<NextRet>(),
                                                   std::declval<NextArgs>()...));
 
     return Promise<NewRet()>(
-        [*this, next = std::forward<F>(next),
+        [state = state_, next = std::forward<F>(next),
          args_tuple =
              std::make_tuple(std::forward<NextArgs>(next_args)...)]() mutable {
-          auto&& result = std::apply(func_, args_);
+          auto&& result = std::apply(state->Func, state->Args);
           return std::apply(
               [&](auto&&... args) {
                 return invoke_next_with_args(
@@ -70,11 +78,10 @@ class Promise<Ret(Args...)> {
         });
   }
 
-  Ret execute() { return std::apply(func_, args_); }
+  Ret execute() { return std::apply(state_->Func, state_->Args); }
 
  private:
-  FunctionType func_;
-  std::tuple<Args...> args_;
+  std::shared_ptr<State> state_{nullptr};
 };
 
 template <typename... Args>
@@ -82,9 +89,16 @@ class Promise<void(Args...)> {
  public:
   using FunctionType = std::function<void(Args...)>;
 
+ private:
+  struct State {
+    FunctionType Func;
+    std::tuple<Args...> Args;
+  };
+
+ public:
   explicit Promise(FunctionType func, Args... args)
-      : func_(std::move(func)),
-        args_(std::make_tuple(std::forward<Args>(args)...)) {
+      : state_(std::make_shared<State>(State{
+            std::move(func), std::make_tuple(std::forward<Args>(args)...)})) {
     static_assert(std::is_invocable_v<FunctionType, Args...>,
                   "Function arguments don't match parameter types");
   }
@@ -93,10 +107,10 @@ class Promise<void(Args...)> {
   auto then(F&& next, NextArgs&&... next_args) {
     using NewRet = decltype(std::invoke(next, std::declval<NextArgs>()...));
     return Promise<NewRet()>(
-        [*this, next = std::forward<F>(next),
+        [state = state_, next = std::forward<F>(next),
          args_tuple =
              std::make_tuple(std::forward<NextArgs>(next_args)...)]() mutable {
-          std::apply(func_, args_);
+          std::apply(state->Func, state->Args);
           return std::apply(
               [&](auto&&... args) {
                 return std::invoke(next, std::forward<decltype(args)>(args)...);
@@ -105,11 +119,10 @@ class Promise<void(Args...)> {
         });
   }
 
-  void execute() { std::apply(func_, args_); }
+  void execute() { std::apply(state_->Func, state_->Args); }
 
  private:
-  FunctionType func_;
-  std::tuple<Args...> args_;
+  std::shared_ptr<State> state_{nullptr};
 };
 
 template <typename F, typename... Args>
